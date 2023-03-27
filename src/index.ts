@@ -1,16 +1,19 @@
 import { CharacterWeight, SimilarityResult, StabilityResult, getAverageSimilarityScore, getAverageStabilityScore, getCharacterScore, getCompetitionScore, getNormalizedPromptScores, getPromptScore, getTrialScore, getWeights } from './score';
-import { appendLog, createLogFolder, createOutputFolder, listAllDirs, listAllFiles, listCharactersDirs } from './file-utils';
+import { appendLog, createLogFolder, createResultOutputFolder, listAllDirs, listAllFiles, parseSourceFolderArgument } from 'chatgpt4pcg-node';
 
 // @ts-ignore
 import { AsyncParser } from '@json2csv/node';
 import BigNumber from 'bignumber.js'
 import fs from 'fs'
-import parseArgs from 'minimist'
 import path from 'path'
 
+export const CHARACTER_LIST = ['A', 'B', 'C', 'D', 'E', 'F', 'G',
+  'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
+  'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 export const STAGE_STABILITY = 'stability'
 export const STAGE_SIMILARITY = 'similarity'
 export const NUM_TRIALS = 10
+export const CURRENT_STAGE = 'result'
 
 type TeamTrialScore = { trialScore: BigNumber | undefined, character: string, team: string, trial: number }
 type TeamStabilityScore = { stabilityScore: BigNumber, character: string, team: string, trial: number }
@@ -30,12 +33,20 @@ type AllTeamAverageSimilarityScores = { avgSimilarity: BigNumber, character: str
 type AllTeamCharacterScores = { characterScore: BigNumber, character: string, team: string }[]
 
 async function main() {
-  const { sFolder, sourceFolder } = getSourcePathFromArgument();
+  let sourceFolder = ''
+  try {
+    sourceFolder = parseSourceFolderArgument()
+  } catch (e) {
+    if (e instanceof Error) {
+      console.error(e.message)
+    }
+    return
+  }
 
-  const logFolderPath = await createLogFolder(sFolder)
-  const prompts = await listAllDirs(sFolder)
+  const logFolderPath = await createLogFolder(sourceFolder)
+  const prompts = await listAllDirs(sourceFolder)
 
-  const weights = await getWeights(sFolder)
+  const weights = await getWeights(sourceFolder)
 
   const allTeamTrialScores = [] as AllTeamTrialScores
   const allTeamAverageStabilityScores = [] as AllTeamAverageStabilityScores
@@ -45,10 +56,10 @@ async function main() {
   const allTeamsFinalScoresAndRanks = [] as AllTeamFinalScoresAndRanks
 
   for (const prompt of prompts) {
-    const teamLog = `[${new Date().toISOString().replaceAll(':', '_')}] Processing - prompt: ${[prompt]}`
-    await appendLog(logFolderPath, teamLog)
+    const teamLog = `[${new Date().toISOString()}] Processing - prompt: ${[prompt]}`
+    await appendLog(logFolderPath, CURRENT_STAGE, teamLog)
 
-    const promptFilePath = path.posix.join(sFolder, prompt)
+    const promptFilePath = path.posix.join(sourceFolder, prompt)
 
     let stability = [] as string[]
     let similarity = [] as string[]
@@ -57,11 +68,11 @@ async function main() {
       const stabilityPath = path.posix.join(promptFilePath, STAGE_STABILITY)
       stability = await listAllFiles(stabilityPath)
     } catch (e) {
-      const promptLog = `[${new Date().toISOString().replaceAll(':', '_')}] Processing - prompt: ${prompt} - Failed`
+      const promptLog = `[${new Date().toISOString()}] Processing - prompt: ${prompt} - Failed`
       if (e instanceof Error) {
-        await appendLog(logFolderPath, `${promptLog} - ${e.message.toString()}`)
+        await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - ${e.message.toString()}`)
       } else if (typeof e === 'string') {
-        await appendLog(logFolderPath, `${promptLog} - ${e}`)
+        await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - ${e}`)
       }
     }
 
@@ -69,37 +80,59 @@ async function main() {
       const similarityPath = path.posix.join(promptFilePath, STAGE_SIMILARITY)
       similarity = await listAllFiles(similarityPath)
     } catch (e) {
-      const promptLog = `[${new Date().toISOString().replaceAll(':', '_')}] Processing - prompt: ${prompt} - Failed`
+      const promptLog = `[${new Date().toISOString()}] Processing - prompt: ${prompt} - Failed`
       if (e instanceof Error) {
-        await appendLog(logFolderPath, `${promptLog} - ${e.message.toString()}`)
+        await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - ${e.message.toString()}`)
       } else if (typeof e === 'string') {
-        await appendLog(logFolderPath, `${promptLog} - ${e}`)
+        await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - ${e}`)
       }
     }
 
-    if (stability.length !== 0 && similarity.length !== 0) {
-      const promptLog = `[${new Date().toISOString().replaceAll(':', '_')}] Processing - prompt: ${prompt} - Failed`
-      await appendLog(logFolderPath, `${promptLog} - Stability files or similarity files are not exist.`)
+    if (stability.length === 0 || similarity.length === 0) {
+      const promptLog = `[${new Date().toISOString()}] Processing - prompt: ${prompt} - Failed`
+      await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - Stability files or similarity files are not exist.`)
+      return
+    }
 
-      if (stability.length !== similarity.length) {
-        const promptLog = `[${new Date().toISOString().replaceAll(':', '_')}] Processing - prompt: ${prompt} - Failed`
-        await appendLog(logFolderPath, `${promptLog} - Number of stability files and similarity files are not equal.`)
-        return
-      }
+    if (stability.length !== similarity.length) {
+      const promptLog = `[${new Date().toISOString()}] Processing - prompt: ${prompt} - Failed`
+      await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - Number of stability files and similarity files are not equal.`)
+      return
     }
 
     const characterScores = [] as TeamCharacterScore[]
 
-    for (const characterFilePath of similarity) {
-      const character = characterFilePath.replace('.json', '')
+    for (const character of CHARACTER_LIST) {
+      const characterFilePath = `${character}.json`
       const characterStabilityFilePath = path.posix.join(promptFilePath, STAGE_STABILITY, characterFilePath)
       const characterSimilarityFilePath = path.posix.join(promptFilePath, STAGE_SIMILARITY, characterFilePath)
 
-      const stabilityFile = await fs.promises.readFile(characterStabilityFilePath, 'utf8')
-      const similarityFile = await fs.promises.readFile(characterSimilarityFilePath, 'utf8')
-
-      const stabilityResult = await JSON.parse(stabilityFile) as StabilityResult
-      const similarityResult = await JSON.parse(similarityFile) as SimilarityResult
+      let stabilityResult = {
+        dataCount: 0,
+        rate: 0,
+        raws: [],
+      } as StabilityResult
+      let similarityResult = {
+        count: 0,
+        similarityRate: 0,
+        trials: [],
+        similarities: []
+      } as SimilarityResult
+      try {
+        const stabilityFile = await fs.promises.readFile(characterStabilityFilePath, 'utf8')
+        const similarityFile = await fs.promises.readFile(characterSimilarityFilePath, 'utf8')
+  
+        stabilityResult = await JSON.parse(stabilityFile) as StabilityResult
+        similarityResult = await JSON.parse(similarityFile) as SimilarityResult
+      } catch (e) {
+        const characterLog = `[${new Date().toISOString()}] Processing - prompt: ${prompt} - character: ${character}`
+        if (e instanceof Error) {
+          await appendLog(logFolderPath, CURRENT_STAGE, `${characterLog} - ${e.message.toString()}`)
+        } else if (typeof e === 'string') {
+          await appendLog(logFolderPath, CURRENT_STAGE, `${characterLog} - ${e}`)
+        }
+        continue
+      }
 
       const trialScores = [] as TeamTrialScore[]
       const stabilityScores = [] as TeamStabilityScore[]
@@ -108,16 +141,18 @@ async function main() {
       const averageSimilarityScores = [] as BigNumber[]
 
       for (let i = 0; i < NUM_TRIALS; i++) {
-        const trialStability = new BigNumber(stabilityResult.raws[i].score) || new BigNumber(0)
+        const stabilityScore = stabilityResult.raws[i]?.score || 0
+        const trialStability = new BigNumber(stabilityScore)
         stabilityScores.push({ stabilityScore: trialStability, character, team: prompt, trial: i + 1 })
-        const trialSimilarity = new BigNumber(similarityResult.trials[i].similarity) || new BigNumber(0)
+        const similarityScore = similarityResult.trials[i]?.similarity || 0
+        const trialSimilarity = new BigNumber(similarityScore)
         similarityScores.push({ similarityScore: trialSimilarity, character, team: prompt, trial: i + 1 })
 
         const trialScore = getTrialScore(weights, character, trialStability, trialSimilarity)
         trialScores.push({ trialScore, character, team: prompt, trial: i + 1 })
 
-        const trialLog = `[${new Date().toISOString().replaceAll(':', '_')}] Calculating trial score - prompt: ${prompt} - character: ${character} - trial: ${i + 1} - stability: ${trialStability} - similarity: ${trialSimilarity} - trial_score: ${trialScore?.toFixed()}`
-        appendLog(logFolderPath, trialLog)
+        const trialLog = `[${new Date().toISOString()}] Calculating trial score - prompt: ${prompt} - character: ${character} - trial: ${i + 1} - stability: ${trialStability} - similarity: ${trialSimilarity} - trial_score: ${trialScore?.toFixed()}`
+        appendLog(logFolderPath, CURRENT_STAGE, trialLog)
 
         averageStabilityScores.push(trialStability)
         averageSimilarityScores.push(trialSimilarity)
@@ -130,34 +165,34 @@ async function main() {
       const avgSimilarity = getAverageSimilarityScore(averageSimilarityScores)
       allTeamAverageSimilarityScores.push({ avgSimilarity, character, team: prompt })
 
-      const averageLog = `[${new Date().toISOString().replaceAll(':', '_')}] Calculating average stability and similarity - prompt: ${prompt} - character: ${character} - stability: ${avgStability.toFixed()} - similarity: ${avgSimilarity.toFixed()}`
-      appendLog(logFolderPath, averageLog)
+      const averageLog = `[${new Date().toISOString()}] Calculating average stability and similarity - prompt: ${prompt} - character: ${character} - stability: ${avgStability.toFixed()} - similarity: ${avgSimilarity.toFixed()}`
+      appendLog(logFolderPath, CURRENT_STAGE, averageLog)
 
       const characterScore = getCharacterScore(trialScores.map((x) => x.trialScore))
       characterScores.push({ characterScore, character, team: prompt })
       allTeamCharacterScores.push({ characterScore, character, team: prompt })
 
-      const characterLog = `[${new Date().toISOString().replaceAll(':', '_')}] Calculating character score - prompt: ${prompt} - character: ${character} - character_score: ${characterScore?.toFixed()}`
-      appendLog(logFolderPath, characterLog)
+      const characterLog = `[${new Date().toISOString()}] Calculating character score - prompt: ${prompt} - character: ${character} - character_score: ${characterScore?.toFixed()}`
+      appendLog(logFolderPath, CURRENT_STAGE, characterLog)
     }
 
     const promptScore = getPromptScore(characterScores)
     allTeamPromptScores.push({ team: prompt, promptScore })
 
-    const promptLog = `[${new Date().toISOString().replaceAll(':', '_')}] Calculating prompt score - prompt: ${prompt} - prompt_score: ${promptScore?.toFixed()}`
-    appendLog(logFolderPath, promptLog)
+    const promptLog = `[${new Date().toISOString()}] Calculating prompt score - prompt: ${prompt} - prompt_score: ${promptScore?.toFixed()}`
+    appendLog(logFolderPath, CURRENT_STAGE, promptLog)
   }
 
   const competitionScore = getCompetitionScore(allTeamPromptScores);
 
-  const competitionLog = `[${new Date().toISOString().replaceAll(':', '_')}] Calculating competition score - competition_score: ${competitionScore.toFixed()}`
-  appendLog(logFolderPath, competitionLog)
+  const competitionLog = `[${new Date().toISOString()}] Calculating competition score - competition_score: ${competitionScore.toFixed()}`
+  appendLog(logFolderPath, CURRENT_STAGE, competitionLog)
 
   const normPromptScores = getNormalizedPromptScores(allTeamPromptScores, competitionScore)
 
   normPromptScores.forEach((p, i) => {
-    const normPromptLog = `[${new Date().toISOString().replaceAll(':', '_')}] Calculating normalized prompt score - prompt: ${p.team} - normalized_prompt_score: ${p.promptScore} - rank: ${i + 1}`
-    appendLog(logFolderPath, normPromptLog)
+    const normPromptLog = `[${new Date().toISOString()}] Calculating normalized prompt score - prompt: ${p.team} - normalized_prompt_score: ${p.promptScore} - rank: ${i + 1}`
+    appendLog(logFolderPath, CURRENT_STAGE, normPromptLog)
   })
 
   normPromptScores.forEach((p, i) => {
@@ -181,8 +216,6 @@ async function main() {
     weights
   })
 }
-
-main()
 
 type OutputToFilesFunction = {
   scores: {
@@ -242,7 +275,7 @@ async function outputToFiles({
     }))
   })
 
-  const outputDir = await createOutputFolder(sourceFolder)
+  const outputDir = await createResultOutputFolder(sourceFolder)
   const constantsOutputFile = path.posix.join(outputDir, 'constants.json')
   await fs.promises.writeFile(constantsOutputFile, constantsJSON)
 
@@ -252,7 +285,7 @@ async function outputToFiles({
     const trialsOutputFile = path.posix.join(outputDir, 'trial_scores.csv')
     const charactersOutputFile = path.posix.join(outputDir, 'character_scores.csv')
     const ranksOutputFile = path.posix.join(outputDir, 'prompt_scores_ranks.csv')
-    
+
     const allTeamTrialScoresCSV = await parser.parse(JSON.stringify(allTeamTrialScoresObj)).promise()
     const allTeamCharacterScoresCSV = await parser.parse(JSON.stringify(allTeamCharacterScoresObj)).promise()
     const allTeamFinalScoresAndRanksCSV = await parser.parse(JSON.stringify(allTeamsFinalScoresAndRanks)).promise()
@@ -265,14 +298,4 @@ async function outputToFiles({
   }
 }
 
-function getSourcePathFromArgument() {
-  const args = parseArgs(process.argv.slice(2));
-  const argv = process.platform === 'win32' ? args['_'] : args['s'];
-  if (argv === undefined) {
-    throw Error('Insufficient parameters to work with.');
-  }
-
-  const sourceFolder = argv + '/';
-  const sFolder = path.posix.resolve(sourceFolder);
-  return { sFolder, sourceFolder };
-}
+main()

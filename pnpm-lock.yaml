@@ -2,11 +2,10 @@ lockfileVersion: 5.4
 
 specifiers:
   '@json2csv/node': ^6.1.2
-  '@types/minimist': ^1.2.2
   '@types/node': ^18.15.5
   bignumber.js: ^9.1.1
+  chatgpt4pcg-node: ^1.0.1
   eslint: ^8.36.0
-  minimist: ^1.2.8
   nodemon: ^2.0.21
   rimraf: ^4.4.0
   ts-node: ^10.9.1
@@ -15,11 +14,10 @@ specifiers:
 dependencies:
   '@json2csv/node': 6.1.2
   bignumber.js: 9.1.1
-  minimist: 1.2.8
+  chatgpt4pcg-node: 1.0.1
   typescript: 5.0.2
 
 devDependencies:
-  '@types/minimist': 1.2.2
   '@types/node': 18.15.5
   eslint: 8.36.0
   nodemon: 2.0.22
@@ -167,10 +165,6 @@ packages:
     resolution: {integrity: sha512-yOlFc+7UtL/89t2ZhjPvvB/DeAr3r+Dq58IgzsFkOAvVC6NMJXmCGjbptdXdR9qsX7pKcTL+s87FtYREi2dEEQ==}
     dev: true
 
-  /@types/minimist/1.2.2:
-    resolution: {integrity: sha512-jhuKLIRrhvCPLqwPcx6INqmKeiA5EWrsCOPhrlFSrbrmU4ZMPjj5Ul/oLCMDO98XRUIwVm78xICz4EPCektzeQ==}
-    dev: true
-
   /@types/node/18.15.5:
     resolution: {integrity: sha512-Ark2WDjjZO7GmvsyFFf81MXuGTA/d6oP38anyxWOL6EREyBKAxKoFHwBhaZxCfLRLpO8JgVXwqOwSwa7jRcjew==}
     dev: true
@@ -280,6 +274,12 @@ packages:
       ansi-styles: 4.3.0
       supports-color: 7.2.0
     dev: true
+
+  /chatgpt4pcg-node/1.0.1:
+    resolution: {integrity: sha512-yBw03Is5LGOApw481wFNZ/gZ8rna+OSAORaj0faKrFrmgoTQukh8S4paReJMhV2eCuufgWu7ofbcPfB0dagwng==}
+    dependencies:
+      minimist: 1.2.8
+    dev: false
 
   /chokidar/3.5.3:
     resolution: {integrity: sha512-Dr3sfKRP6oTcjf2JmUmFJfeVMvXBdegxB0iVQ5eb2V10uFJUCAS8OByZdVAyVb8xXNz3GjjTgj9kLWsZTqE6kw==}

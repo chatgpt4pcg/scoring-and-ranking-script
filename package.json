@@ -15,11 +15,10 @@
 	"dependencies": {
 		"@json2csv/node": "^6.1.2",
 		"bignumber.js": "^9.1.1",
-		"minimist": "^1.2.8",
+		"chatgpt4pcg-node": "^1.0.1",
 		"typescript": "^5.0.2"
 	},
 	"devDependencies": {
-		"@types/minimist": "^1.2.2",
 		"@types/node": "^18.15.5",
 		"eslint": "^8.36.0",
 		"nodemon": "^2.0.21",
