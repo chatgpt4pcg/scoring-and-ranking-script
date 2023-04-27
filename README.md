@@ -15,7 +15,7 @@ To use this script, you must have <a href="https://nodejs.org/en/" target="_new"
 1. Run the script using the command `npm start -s="<SOURCE_FOLDER>"`. For example, `npm start -s="./competition"`.
 2. The script will output a `prompt_scores_ranks.csv` file containing the result of the competition along with `constants.json`, `trial_scores.csv`, and `character_scores.csv` in `<SOURCE_FOLDER>/result` directory. This file contains the results of the competition. The file `result_log_<DATE_TIME>.txt` will be created in the `<SOURCE_FOLDER>/logs` folder.
 
-Note: This script assumes `10` trials of each character, i.e., every `<SOURCE_FOLDER>/<TEAM_NAME>/similarity` and `<SOURCE_FOLDER>/<TEAM_NAME>/stability containing` containing `10` result files. The number of trials can be adjusted using the NUM_TRIALS constant in the src/index.ts file.
+Note: This script assumes `10` trials of each character, i.e., every `<SOURCE_FOLDER>/<TEAM_NAME>/similarity` and `<SOURCE_FOLDER>/<TEAM_NAME>/stability` containing `10` result files. The number of trials can be adjusted using the NUM_TRIALS constant in the `src/index.ts` file.
 
 Please ensure that the source folder has the following structure:
 
