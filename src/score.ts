@@ -21,10 +21,12 @@ export type SimilarityResult = {
 }
 
 export function getNormalizedPromptScores(allTeamPromptScores: { team: string; promptScore: BigNumber | undefined; }[], competitionScore: BigNumber) {
+  const divider = competitionScore.valueOf() === "0" ? new BigNumber(1) : competitionScore;
+
   return allTeamPromptScores
     .map(p => ({
       team: p.team,
-      promptScore: p.promptScore?.dividedBy(competitionScore).multipliedBy(100) || new BigNumber(0)
+      promptScore: p.promptScore?.dividedBy(divider).multipliedBy(100) || new BigNumber(0)
     }))
     .sort((a, b) => a.promptScore.gt(b.promptScore || new BigNumber(0)) ? -1 : 1)
     .map(p => ({

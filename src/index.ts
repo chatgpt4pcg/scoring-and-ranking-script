@@ -88,12 +88,6 @@ async function main() {
       }
     }
 
-    if (stability.length === 0 || similarity.length === 0) {
-      const promptLog = `[${new Date().toISOString()}] Processing - prompt: ${prompt} - Failed`
-      await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - Stability files or similarity files are not exist.`)
-      return
-    }
-
     if (stability.length !== similarity.length) {
       const promptLog = `[${new Date().toISOString()}] Processing - prompt: ${prompt} - Failed`
       await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - Number of stability files and similarity files are not equal.`)
@@ -118,6 +112,7 @@ async function main() {
         trials: [],
         similarities: []
       } as SimilarityResult
+
       try {
         const stabilityFile = await fs.promises.readFile(characterStabilityFilePath, 'utf8')
         const similarityFile = await fs.promises.readFile(characterSimilarityFilePath, 'utf8')
@@ -131,7 +126,6 @@ async function main() {
         } else if (typeof e === 'string') {
           await appendLog(logFolderPath, CURRENT_STAGE, `${characterLog} - ${e}`)
         }
-        continue
       }
 
       const trialScores = [] as TeamTrialScore[]
