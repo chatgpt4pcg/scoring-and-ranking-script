@@ -1,4 +1,4 @@
-import { CharacterWeight, SimilarityResult, StabilityResult, getAverageSimilarityScore, getAverageStabilityScore, getCharacterScore, getCompetitionScore, getNormalizedPromptScores, getPromptScore, getTrialScore, getWeights } from './score';
+import { CharacterWeight, DiversityResult, SimilarityResult, StabilityResult, getAverageSimilarityScore, getAverageStabilityScore, getCharacterScore, getCompetitionScore, getNormalizedPromptScores, getPromptScore, getTrialScore, getWeights } from './score';
 import { appendLog, createLogFolder, createResultOutputFolder, listAllDirs, listAllFiles, parseSourceFolderArgument } from 'chatgpt4pcg-node';
 
 // @ts-ignore
@@ -12,6 +12,7 @@ export const CHARACTER_LIST = ['A', 'B', 'C', 'D', 'E', 'F', 'G',
   'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 export const STAGE_STABILITY = 'stability'
 export const STAGE_SIMILARITY = 'similarity'
+export const STAGE_DIVERSITY = 'diversity'
 export const NUM_TRIALS = 10
 export const CURRENT_STAGE = 'result'
 
@@ -30,6 +31,7 @@ type AllTeamPromptScores = { team: string, promptScore: BigNumber | undefined }[
 type AllTeamFinalScoresAndRanks = { team: string, promptScore: string, normalizedPromptScore: string, rank: number }[]
 type AllTeamAverageStabilityScores = { avgStability: BigNumber, character: string, team: string }[]
 type AllTeamAverageSimilarityScores = { avgSimilarity: BigNumber, character: string, team: string }[]
+type AllTeamDiversityScores = { diversityScore: BigNumber, character: string, team: string }[]
 type AllTeamCharacterScores = { characterScore: BigNumber, character: string, team: string }[]
 
 async function main() {
@@ -51,6 +53,7 @@ async function main() {
   const allTeamTrialScores = [] as AllTeamTrialScores
   const allTeamAverageStabilityScores = [] as AllTeamAverageStabilityScores
   const allTeamAverageSimilarityScores = [] as AllTeamAverageSimilarityScores
+  const allTeamDiversityScores = [] as AllTeamDiversityScores
   const allTeamCharacterScores = [] as AllTeamCharacterScores
   const allTeamPromptScores = [] as AllTeamPromptScores
   const allTeamsFinalScoresAndRanks = [] as AllTeamFinalScoresAndRanks
@@ -63,6 +66,7 @@ async function main() {
 
     let stability = [] as string[]
     let similarity = [] as string[]
+    let diversity = [] as string[]
 
     try {
       const stabilityPath = path.posix.join(promptFilePath, STAGE_STABILITY)
@@ -88,7 +92,19 @@ async function main() {
       }
     }
 
-    if (stability.length !== similarity.length) {
+    try {
+      const diversityPath = path.posix.join(promptFilePath, STAGE_DIVERSITY)
+      diversity = await listAllFiles(diversityPath)
+    } catch (e) {
+      const promptLog = `[${new Date().toISOString()}] Processing - prompt: ${prompt} - Failed`
+      if (e instanceof Error) {
+        await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - ${e.message.toString()}`)
+      } else if (typeof e === 'string') {
+        await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - ${e}`)
+      }
+    }
+
+    if (stability.length !== similarity.length || stability.length !== diversity.length) {
       const promptLog = `[${new Date().toISOString()}] Processing - prompt: ${prompt} - Failed`
       await appendLog(logFolderPath, CURRENT_STAGE, `${promptLog} - Number of stability files and similarity files are not equal.`)
       return
@@ -100,6 +116,7 @@ async function main() {
       const characterFilePath = `${character}.json`
       const characterStabilityFilePath = path.posix.join(promptFilePath, STAGE_STABILITY, characterFilePath)
       const characterSimilarityFilePath = path.posix.join(promptFilePath, STAGE_SIMILARITY, characterFilePath)
+      const characterDiversityFilePath = path.posix.join(promptFilePath, STAGE_DIVERSITY, characterFilePath)
 
       let stabilityResult = {
         dataCount: 0,
@@ -112,13 +129,21 @@ async function main() {
         trials: [],
         similarities: []
       } as SimilarityResult
+      let diversityResult = {
+        count: 0,
+        diversityRate: 0,
+        trials: [],
+        diversities: []
+      } as DiversityResult
 
       try {
         const stabilityFile = await fs.promises.readFile(characterStabilityFilePath, 'utf8')
         const similarityFile = await fs.promises.readFile(characterSimilarityFilePath, 'utf8')
-  
+        const diversityFile = await fs.promises.readFile(characterDiversityFilePath, 'utf8')
+
         stabilityResult = await JSON.parse(stabilityFile) as StabilityResult
         similarityResult = await JSON.parse(similarityFile) as SimilarityResult
+        diversityResult = await JSON.parse(diversityFile) as DiversityResult
       } catch (e) {
         const characterLog = `[${new Date().toISOString()}] Processing - prompt: ${prompt} - character: ${character}`
         if (e instanceof Error) {
@@ -162,9 +187,10 @@ async function main() {
       const averageLog = `[${new Date().toISOString()}] Calculating average stability and similarity - prompt: ${prompt} - character: ${character} - stability: ${avgStability.toFixed()} - similarity: ${avgSimilarity.toFixed()}`
       appendLog(logFolderPath, CURRENT_STAGE, averageLog)
 
-      const characterScore = getCharacterScore(trialScores.map((x) => x.trialScore))
+      const characterScore = getCharacterScore(trialScores.map((x) => x.trialScore), new BigNumber(diversityResult.diversityRate))
       characterScores.push({ characterScore, character, team: prompt })
       allTeamCharacterScores.push({ characterScore, character, team: prompt })
+      allTeamDiversityScores.push({ diversityScore: new BigNumber(diversityResult.diversityRate), character, team: prompt })
 
       const characterLog = `[${new Date().toISOString()}] Calculating character score - prompt: ${prompt} - character: ${character} - character_score: ${characterScore?.toFixed()}`
       appendLog(logFolderPath, CURRENT_STAGE, characterLog)
@@ -204,6 +230,7 @@ async function main() {
       allTeamsFinalScoresAndRanks,
       allTeamAverageStabilityScores,
       allTeamAverageSimilarityScores,
+      allTeamDiversityScores,
       allTeamCharacterScores,
     },
     sourceFolder,
@@ -218,6 +245,7 @@ type OutputToFilesFunction = {
     allTeamsFinalScoresAndRanks: AllTeamFinalScoresAndRanks,
     allTeamAverageStabilityScores: AllTeamAverageStabilityScores,
     allTeamAverageSimilarityScores: AllTeamAverageSimilarityScores,
+    allTeamDiversityScores: AllTeamDiversityScores,
     allTeamCharacterScores: AllTeamCharacterScores,
   },
   weights: CharacterWeight[],
@@ -231,6 +259,7 @@ async function outputToFiles({
     allTeamsFinalScoresAndRanks,
     allTeamAverageStabilityScores,
     allTeamAverageSimilarityScores,
+    allTeamDiversityScores,
     allTeamCharacterScores,
   },
   sourceFolder,
@@ -242,9 +271,10 @@ async function outputToFiles({
         teamName: x.team,
         character: y.character,
         trial: y.trial,
-        trial_Score: y.trialScore?.toFixed(),
+        trial_score: y.trialScore?.toFixed(),
         stabilityScore: x.stabilityScores.find((z) => z.team === x.team && z.character === y.character && z.trial === y.trial)?.stabilityScore.toFixed(),
-        similarityScore: x.similarityScores.find((z) => z.team === x.team && z.character === y.character && z.trial === y.trial)?.similarityScore.toFixed()
+        similarityScore: x.similarityScores.find((z) => z.team === x.team && z.character === y.character && z.trial === y.trial)?.similarityScore.toFixed(),
+        diversityScore: allTeamDiversityScores.find((z) => z.team === x.team && z.character === y.character)?.diversityScore.toFixed()
       }
     })
   }).flat()
@@ -255,7 +285,8 @@ async function outputToFiles({
       character: x.character,
       characterScore: x.characterScore?.toFixed(),
       nonWeightedAverageStabilityScore: allTeamAverageStabilityScores.find((y) => y.team === x.team && y.character === x.character)?.avgStability.toFixed(),
-      nonWeightedAverageSimilarityScore: allTeamAverageSimilarityScores.find((y) => y.team === x.team && y.character === x.character)?.avgSimilarity.toFixed()
+      nonWeightedAverageSimilarityScore: allTeamAverageSimilarityScores.find((y) => y.team === x.team && y.character === x.character)?.avgSimilarity.toFixed(),
+      diversityScore: allTeamDiversityScores.find((y) => y.team === x.team && y.character === x.character)?.diversityScore.toFixed()
     }
   })
 
@@ -265,7 +296,8 @@ async function outputToFiles({
       character: w.character,
       weight: w.weight.toFixed(),
       weightStability: w.weightStability.toFixed(),
-      weightSimilarity: w.weightSimilarity.toFixed()
+      weightSimilarity: w.weightSimilarity.toFixed(),
+      weightDiversity: w.weightDiversity.toFixed()
     }))
   })
 

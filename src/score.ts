@@ -1,5 +1,5 @@
-import { CHARACTER_LIST, CURRENT_STAGE, NUM_TRIALS, STAGE_SIMILARITY, STAGE_STABILITY } from ".";
-import { appendLog, createLogFolder, listAllDirs, listAllFiles } from "chatgpt4pcg-node";
+import { CHARACTER_LIST, CURRENT_STAGE, NUM_TRIALS, STAGE_DIVERSITY, STAGE_SIMILARITY, STAGE_STABILITY } from ".";
+import { appendLog, createLogFolder, listAllDirs } from "chatgpt4pcg-node";
 
 import BigNumber from "bignumber.js";
 import fs from "fs";
@@ -9,6 +9,7 @@ export type CharacterWeight = {
   character: string,
   weightStability: BigNumber,
   weightSimilarity: BigNumber,
+  weightDiversity: BigNumber,
   weight: BigNumber
 }
 
@@ -20,13 +21,17 @@ export type SimilarityResult = {
   count: number, similarityRate: number, trials: { id: string, label: string, similarity: number }[], similarities: { id: string, raws: { id: string, label: string, softmax_prob: number }[] }[]
 }
 
+export type DiversityResult = {
+  count: number, diversityRate: number, trials: { id: string, vector: number[] }[], diversities: { pair: { trial1: string, trial2: string }, distance: number }[]
+}
+
 export function getNormalizedPromptScores(allTeamPromptScores: { team: string; promptScore: BigNumber | undefined; }[], competitionScore: BigNumber) {
   const divider = competitionScore.valueOf() === "0" ? new BigNumber(1) : competitionScore;
 
   return allTeamPromptScores
     .map(p => ({
       team: p.team,
-      promptScore: p.promptScore?.dividedBy(divider).multipliedBy(100) || new BigNumber(0)
+      promptScore: p.promptScore?.dividedBy(divider).multipliedBy(100) ?? new BigNumber(0)
     }))
     .sort((a, b) => a.promptScore.gt(b.promptScore || new BigNumber(0)) ? -1 : 1)
     .map(p => ({
@@ -38,13 +43,9 @@ export function getNormalizedPromptScores(allTeamPromptScores: { team: string; p
 export function getCompetitionScore(allTeamPromptScores: { team: string; promptScore: BigNumber | undefined; }[]) {
   let competitionScore = new BigNumber(0);
   for (const promptScore of allTeamPromptScores) {
-    competitionScore = competitionScore.plus(promptScore.promptScore || new BigNumber(0));
+    competitionScore = competitionScore.plus(promptScore.promptScore ?? new BigNumber(0));
   }
   return competitionScore;
-}
-
-export function getCharacterScore(trialScores: (BigNumber | undefined)[]) {
-  return trialScores.reduce((acc, cur) => acc?.plus(cur || new BigNumber(0)), new BigNumber(0))?.dividedBy(NUM_TRIALS) || new BigNumber(0);
 }
 
 export function getAverageSimilarityScore(averageSimilarityScores: BigNumber[]) {
@@ -63,10 +64,17 @@ export function getTrialScore(weights: CharacterWeight[], character: string, tri
     .multipliedBy(trialSimilarity);
 }
 
+export function getCharacterScore(trialScores: (BigNumber | undefined)[], diversityScore: BigNumber) {
+  return trialScores.reduce((acc, cur) => acc?.plus(cur ?? new BigNumber(0)), new BigNumber(0))
+    ?.dividedBy(NUM_TRIALS)
+    .multipliedBy(diversityScore)
+    ?? new BigNumber(0);
+}
+
 export function getPromptScore(characterScores: { characterScore: BigNumber | undefined; character: string; team: string; }[]) {
   return characterScores
     .map(score => score.characterScore)
-    .reduce((acc, cur) => acc?.plus(cur || new BigNumber(0)), new BigNumber(0))
+    .reduce((acc, cur) => acc?.plus(cur ?? new BigNumber(0)), new BigNumber(0))
     ?.dividedBy(characterScores.length);
 }
 
@@ -84,15 +92,19 @@ export async function getWeights(sourceFolder: string) {
     const averageSimilarity = await getAverageSimilarityAcrossTeams(characterFilePath);
     const weightSimilarity = BigNumber.max(new BigNumber(1).minus(averageSimilarity), new BigNumber(1).dividedBy(CHARACTER_LIST.length))
 
+    const averageDiversity = await getAverageDiversityAcrossTeams(characterFilePath);
+    const weightDiversity = BigNumber.max(new BigNumber(1).minus(averageDiversity), new BigNumber(1).dividedBy(CHARACTER_LIST.length))
+
     const weight = {
       character: character,
       weightStability,
       weightSimilarity,
-      weight: weightStability.multipliedBy(weightSimilarity)
+      weightDiversity,
+      weight: weightStability.multipliedBy(weightSimilarity).multipliedBy(weightDiversity)
     }
     characterWeights.push(weight)
 
-    const weightLog = `[${new Date().toISOString().replaceAll(':', '_')}] character: ${weight.character} - weight: ${weight.weight.toFixed()} - weightStability: ${weight.weightStability.toFixed()} - weightSimilarity: ${weight.weightSimilarity.toFixed()}`
+    const weightLog = `[${new Date().toISOString().replaceAll(':', '_')}] character: ${weight.character} - weight: ${weight.weight.toFixed()} - weightStability: ${weight.weightStability.toFixed()} - weightSimilarity: ${weight.weightSimilarity.toFixed()} - weightDiversity: ${weight.weightDiversity.toFixed()}`
     await appendLog(logFolderPath, CURRENT_STAGE, weightLog)
   }
 
@@ -119,6 +131,17 @@ export async function getWeights(sourceFolder: string) {
     }
 
     return sumOfSimilarityOfAllTeams.dividedBy(teamFolders.length * NUM_TRIALS);
+  }
+
+  async function getAverageDiversityAcrossTeams(character: string) {
+    let sumOfDiversityOfAllTeams = new BigNumber(0);
+
+    for (const team of teamFolders) {
+      const characterDiversity = await getCharacterDiversity(team, character);
+      sumOfDiversityOfAllTeams = sumOfDiversityOfAllTeams.plus(characterDiversity);
+    }
+
+    return sumOfDiversityOfAllTeams.dividedBy(teamFolders.length);
   }
 
   async function getTrialSimilarity(prompt: string, character: string) {
@@ -167,5 +190,29 @@ export async function getWeights(sourceFolder: string) {
 
     const trialStability = stabilityResult.raws.reduce((acc, cur) => acc.plus(new BigNumber(cur.score)), new BigNumber(0));
     return trialStability;
+  }
+
+  async function getCharacterDiversity(prompt: string, character: string) {
+    const diversityResultPath = path.posix.join(sourceFolder, prompt, STAGE_DIVERSITY, character);
+    let diversityResult = {
+      count: 0,
+      diversityRate: 0,
+      trials: [],
+      diversities: []
+    } as DiversityResult;
+
+    try {
+      const diversityFile = await fs.promises.readFile(diversityResultPath, 'utf8');
+      diversityResult = await JSON.parse(diversityFile) as DiversityResult;
+    } catch (e) {
+      const diversityLog = `[${new Date().toISOString()}] Processing diversity - prompt: ${prompt} - character: ${character}`
+      if (e instanceof Error) {
+        await appendLog(logFolderPath, CURRENT_STAGE, `${diversityLog} - ${e.message.toString()}`)
+      } else if (typeof e === 'string') {
+        await appendLog(logFolderPath, CURRENT_STAGE, `${diversityLog} - ${e}`)
+      }
+    }
+
+    return new BigNumber(diversityResult.diversityRate);
   }
 }
