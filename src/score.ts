@@ -25,6 +25,11 @@ export type DiversityResult = {
   count: number, diversityRate: number, trials: { id: string, vector: number[] }[], diversities: { pair: { trial1: string, trial2: string }, distance: number }[]
 }
 
+export function getTrialIndexFromFileName(fileName: string) {
+  const fileNameParts = fileName.split('_');
+  return parseInt(fileNameParts[fileNameParts.length - 1].split('.')[0]);
+}
+
 export function getNormalizedPromptScores(allTeamPromptScores: { team: string; promptScore: BigNumber | undefined; }[], competitionScore: BigNumber) {
   const divider = competitionScore.valueOf() === "0" ? new BigNumber(1) : competitionScore;
 
