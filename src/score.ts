@@ -1,5 +1,5 @@
 import { CHARACTER_LIST, CURRENT_STAGE, NUM_TRIALS, STAGE_SIMILARITY, STAGE_STABILITY } from ".";
-import { appendLog, createLogFolder, listAllDirs, listAllFiles } from "chatgpt4pcg-node";
+import { appendLog, createLogFolder, listAllDirs } from "chatgpt4pcg-node";
 
 import BigNumber from "bignumber.js";
 import fs from "fs";
@@ -18,6 +18,11 @@ export type StabilityResult = {
 
 export type SimilarityResult = {
   count: number, similarityRate: number, trials: { id: string, label: string, similarity: number }[], similarities: { id: string, raws: { id: string, label: string, softmax_prob: number }[] }[]
+}
+
+export function getTrialIndexFromFileName(fileName: string) {
+  const fileNameParts = fileName.split('_');
+  return parseInt(fileNameParts[fileNameParts.length - 1].split('.')[0]);
 }
 
 export function getNormalizedPromptScores(allTeamPromptScores: { team: string; promptScore: BigNumber | undefined; }[], competitionScore: BigNumber) {

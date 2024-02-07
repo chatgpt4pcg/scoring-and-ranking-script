@@ -1,4 +1,4 @@
-import { CharacterWeight, SimilarityResult, StabilityResult, getAverageSimilarityScore, getAverageStabilityScore, getCharacterScore, getCompetitionScore, getNormalizedPromptScores, getPromptScore, getTrialScore, getWeights } from './score';
+import { CharacterWeight, SimilarityResult, StabilityResult, getAverageSimilarityScore, getAverageStabilityScore, getCharacterScore, getCompetitionScore, getNormalizedPromptScores, getPromptScore, getTrialIndexFromFileName, getTrialScore, getWeights } from './score';
 import { appendLog, createLogFolder, createResultOutputFolder, listAllDirs, listAllFiles, parseSourceFolderArgument } from 'chatgpt4pcg-node';
 
 // @ts-ignore
@@ -135,10 +135,10 @@ async function main() {
       const averageSimilarityScores = [] as BigNumber[]
 
       for (let i = 0; i < NUM_TRIALS; i++) {
-        const stabilityScore = stabilityResult.raws[i]?.score || 0
+        const stabilityScore = stabilityResult.raws.find((x) => getTrialIndexFromFileName(x.tag) === i + 1)?.score ?? 0
         const trialStability = new BigNumber(stabilityScore)
         stabilityScores.push({ stabilityScore: trialStability, character, team: prompt, trial: i + 1 })
-        const similarityScore = similarityResult.trials[i]?.similarity || 0
+        const similarityScore = similarityResult.trials.find((x) => getTrialIndexFromFileName(x.id) === i + 1)?.similarity ?? 0
         const trialSimilarity = new BigNumber(similarityScore)
         similarityScores.push({ similarityScore: trialSimilarity, character, team: prompt, trial: i + 1 })
 
