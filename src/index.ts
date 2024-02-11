@@ -7,6 +7,8 @@ import BigNumber from 'bignumber.js'
 import fs from 'fs'
 import path from 'path'
 
+const DISABLE_WEIGHTS = false
+
 export const CHARACTER_LIST = ['A', 'B', 'C', 'D', 'E', 'F', 'G',
   'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
   'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
@@ -48,7 +50,7 @@ async function main() {
   const logFolderPath = await createLogFolder(sourceFolder)
   const prompts = await listAllDirs(sourceFolder)
 
-  const weights = await getWeights(sourceFolder)
+  const weights = await getWeights(sourceFolder, DISABLE_WEIGHTS)
 
   const allTeamTrialScores = [] as AllTeamTrialScores
   const allTeamAverageStabilityScores = [] as AllTeamAverageStabilityScores

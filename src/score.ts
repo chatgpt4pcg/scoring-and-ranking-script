@@ -83,7 +83,7 @@ export function getPromptScore(characterScores: { characterScore: BigNumber | un
     ?.dividedBy(characterScores.length);
 }
 
-export async function getWeights(sourceFolder: string) {
+export async function getWeights(sourceFolder: string, disableWeights: boolean = false) {
   const teamFolders = await listAllDirs(sourceFolder)
   const logFolderPath = await createLogFolder(sourceFolder)
 
@@ -102,10 +102,10 @@ export async function getWeights(sourceFolder: string) {
 
     const weight = {
       character: character,
-      weightStability,
-      weightSimilarity,
-      weightDiversity,
-      weight: weightStability.multipliedBy(weightSimilarity).multipliedBy(weightDiversity)
+      weightStability: disableWeights ? new BigNumber(1) : weightStability,
+      weightSimilarity: disableWeights ? new BigNumber(1) : weightSimilarity,
+      weightDiversity: disableWeights ? new BigNumber(1) : weightDiversity,
+      weight: disableWeights ? new BigNumber(1) : weightStability.multipliedBy(weightSimilarity).multipliedBy(weightDiversity)
     }
     characterWeights.push(weight)
 
